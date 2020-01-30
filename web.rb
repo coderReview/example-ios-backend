@@ -3,14 +3,30 @@ require 'stripe'
 require 'dotenv'
 require 'json'
 require 'encrypted_cookie'
+require 'rest-client'
 
 $stdout.sync = true # Get puts to show up in heroku logs
 
 Dotenv.load
 Stripe.api_key = ENV['STRIPE_TEST_SECRET_KEY']
 
+set :bind, '0.0.0.0'
+
+helpers do
+  def protected!
+    return if authorized?
+    headers['WWW-Authenticate'] = 'Basic realm="Restricted Area"'
+    halt 401, "Not authorized\n"
+  end
+
+  def authorized?
+    @auth ||=  Rack::Auth::Basic::Request.new(request.env)
+    @auth.provided? and @auth.basic? and @auth.credentials and @auth.credentials == ['admin', '987c5464-a87a-4602-9378-571b7eb0ead6']
+  end
+end
+
 use Rack::Session::EncryptedCookie,
-  :secret => 'replace_me_with_a_real_secret_key' # Actually use something secret here!
+  :secret => '987c5464-a87a-4602-9378-571b7eb0ead6' # Actually use something secret here!
 
 def log_info(message)
   puts "\n" + message + "\n\n"
@@ -22,12 +38,28 @@ get '/' do
   return log_info("Great, your backend is set up. Now you can configure the Stripe example apps to point here.")
 end
 
+post '/create_customer' do
+  protected!
+  begin
+    body = JSON.parse(request.body.read)
+    @customer = create_customer(body["user"])
+  rescue Stripe::InvalidRequestError
+  end
+
+  customer_id = @customer.id
+
+  content_type :json
+  status 200
+  customer_id.to_json
+end
+
 post '/ephemeral_keys' do
-  authenticate!
+  body = JSON.parse(request.body.read)
+  authenticate!(body["user"])
   begin
     key = Stripe::EphemeralKey.create(
-      {customer: @customer.id},
-      {stripe_version: params["api_version"]}
+      { customer: @customer.id },
+      { stripe_version: params["api_version"] }
     )
   rescue Stripe::StripeError => e
     status 402
@@ -39,9 +71,7 @@ post '/ephemeral_keys' do
   key.to_json
 end
 
-def authenticate!
-  # This code simulates "loading the Stripe customer for your current session".
-  # Your own logic will likely look very different.
+def authenticate!(user)
   return @customer if @customer
   if session.has_key?(:customer_id)
     customer_id = session[:customer_id]
@@ -50,50 +80,27 @@ def authenticate!
     rescue Stripe::InvalidRequestError
     end
   else
-    default_cusomer_id = ENV['DEFAULT_CUSTOMER_ID']
-    if default_cusomer_id
-      @customer = Stripe::Customer.retrieve(default_cusomer_id)
-    else
-      begin
-        @customer = create_customer()
-
-        # Attach some test cards to the customer for testing convenience.
-        # See https://stripe.com/docs/payments/3d-secure#three-ds-cards 
-        # and https://stripe.com/docs/mobile/android/authentication#testing
-        ['4000000000003220', '4000000000003063', '4000000000003238', '4000000000003246', '4000000000003253', '4242424242424242'].each { |cc_number|
-          payment_method = Stripe::PaymentMethod.create({
-            type: 'card',
-            card: {
-              number: cc_number,
-              exp_month: 8,
-              exp_year: 2022,
-              cvc: '123',
-            },
-          })
-
-          Stripe::PaymentMethod.attach(
-            payment_method.id,
-            {
-              customer: @customer.id,
-            }
-          )
-        }
-      rescue Stripe::InvalidRequestError
-      end
+    customer_id = user["customer_id"]
+    begin
+      @customer = Stripe::Customer.retrieve(customer_id)
+    rescue Stripe::InvalidRequestError
     end
-    session[:customer_id] = @customer.id
   end
   @customer
 end
 
-def create_customer
-  Stripe::Customer.create(
-    :description => 'mobile SDK example customer',
+def create_customer(user)
+  email = user["email"]
+  userId = user["userId"]
+  newCustomer = Stripe::Customer.create(
+    :email => email,
+    :description => 'From iOS SDK',
     :metadata => {
       # Add our application's customer id for this Customer, so it'll be easier to look up
-      :my_customer_id => '72F8C533-FCD5-47A6-A45B-3956CA8C792D',
+      :my_customer_id => userId,
     },
   )
+  newCustomer
 end
 
 # This endpoint responds to webhooks sent by Stripe. To use it, you'll need
@@ -322,49 +329,18 @@ end
 # ===== Helpers
 
 # Our example apps sell emoji apparel; this hash lets us calculate the total amount to charge.
-EMOJI_STORE = {
-  "👕" => 2000,
-  "👖" => 4000,
-  "👗" => 3000,
-  "👞" => 700,
-  "👟" => 600,
-  "👠" => 1000,
-  "👡" => 2000,
-  "👢" => 2500,
-  "👒" => 800,
-  "👙" => 3000,
-  "💄" => 2000,
-  "🎩" => 5000,
-  "👛" => 5500,
-  "👜" => 6000,
-  "🕶" => 2000,
-  "👚" => 2500,
+STORE = {
+  "colab" => 2000
 }
 
 def price_lookup(product)
-  price = EMOJI_STORE[product]
+  price = STORE[product]
   raise "Can't find price for %s (%s)" % [product, product.ord.to_s(16)] if price.nil?
   return price
 end
 
 def calculate_price(products, shipping)
-  amount = 1099  # Default amount.
-
-  if products
-    amount = products.reduce(0) { | sum, product | sum + price_lookup(product) }
-  end
-
-  if shipping
-    case shipping
-    when "fedex"
-      amount = amount + 599
-    when "fedex_world"
-      amount = amount + 2099
-    when "ups_worldwide"
-      amount = amount + 1099
-    end
-  end
-
+  amount = 4990  # Default amount.
   return amount
 end
 
