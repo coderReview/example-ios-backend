@@ -42,7 +42,7 @@ post '/create_customer' do
   protected!
   begin
     body = JSON.parse(request.body.read)
-    @customer = create_customer(body["user"])
+    @customer = create_customer(body)
   rescue Stripe::InvalidRequestError
   end
 
