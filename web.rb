@@ -92,7 +92,7 @@ end
 def create_customer(user)
   email = user["email"]
   userId = user["userId"]
-  name = user["firstName"] + user["lastName"]
+  name = user["firstName"] + " " + user["lastName"]
   newCustomer = Stripe::Customer.create(
     :name => name,
     :email => email,
