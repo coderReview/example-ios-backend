@@ -236,7 +236,7 @@ post '/create_payment_intent' do
   authenticate!(body["user"])
 
   if request.content_type != nil and request.content_type.include? 'application/json' and params.empty?
-      payload = Sinatra::IndifferentHash[JSON.parse(request.body.read)]
+      payload = Sinatra::IndifferentHash[body]
   end
 
   # Calculate how much to charge the customer
@@ -282,7 +282,7 @@ post '/confirm_payment_intent' do
   authenticate!(body["user"])
 
   if request.content_type.include? 'application/json' and params.empty?
-    payload = Sinatra::IndifferentHash[JSON.parse(request.body.read)]
+    payload = Sinatra::IndifferentHash[body]
   end
 
   begin
