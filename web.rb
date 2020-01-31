@@ -43,6 +43,26 @@ post '/create_customer' do
   begin
     body = JSON.parse(request.body.read)
     @customer = create_customer(body)
+
+    # Attach some test cards to the customer for testing convenience.
+    ['4242424242424242'].each { |cc_number|
+      payment_method = Stripe::PaymentMethod.create({
+        type: 'card',
+        card: {
+          number: cc_number,
+          exp_month: 8,
+          exp_year: 2022,
+          cvc: '123',
+        },
+      })
+
+      Stripe::PaymentMethod.attach(
+        payment_method.id,
+        {
+          customer: @customer.id,
+        }
+      )
+    }
   rescue Stripe::InvalidRequestError
   end
 
