@@ -231,8 +231,9 @@ end
 # https://stripe.com/docs/api/payment_intents/create
 # A real implementation would include controls to prevent misuse
 post '/create_payment_intent' do
-  authenticate!
   payload = params
+  body = JSON.parse(request.body.read)
+  authenticate!(body["user"])
 
   if request.content_type != nil and request.content_type.include? 'application/json' and params.empty?
       payload = Sinatra::IndifferentHash[JSON.parse(request.body.read)]
@@ -276,8 +277,10 @@ end
 # https://stripe.com/docs/api/payment_intents/confirm
 # A real implementation would include controls to prevent misuse
 post '/confirm_payment_intent' do
-  authenticate!
   payload = params
+  body = JSON.parse(request.body.read)
+  authenticate!(body["user"])
+
   if request.content_type.include? 'application/json' and params.empty?
     payload = Sinatra::IndifferentHash[JSON.parse(request.body.read)]
   end
